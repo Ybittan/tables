@@ -126,7 +126,7 @@
 
     main {
       padding: 1rem 1.25rem 2.5rem;
-      max-width: 1200px;
+      max-width: 1400px;
       margin: 0 auto;
     }
 
@@ -242,13 +242,38 @@
 
     .icon-btn:hover { background: var(--danger-soft); color: var(--danger); }
 
-    .tables-grid {
+    .floor-wrap {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(90deg, rgba(15, 118, 110, 0.05) 1px, transparent 1px),
+        linear-gradient(rgba(15, 118, 110, 0.05) 1px, transparent 1px),
+        #fbfcfd;
+      background-size: 24px 24px;
+      box-shadow: var(--shadow);
+      overflow: auto;
+      max-height: min(75vh, 900px);
+      min-height: 520px;
+      position: relative;
+      touch-action: pan-x pan-y;
+    }
+
+    .floor-canvas {
+      position: relative;
+      min-width: 900px;
+      min-height: 640px;
+    }
+
+    .floor-canvas.empty-floor {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-      gap: 0.85rem;
+      place-items: center;
+      color: var(--muted);
+      font-size: 0.9rem;
     }
 
     .table-card {
+      position: absolute;
+      width: 260px;
       border: 1px solid var(--line);
       border-radius: var(--radius);
       background: white;
@@ -256,7 +281,16 @@
       min-height: 180px;
       display: flex;
       flex-direction: column;
+      box-shadow: 0 8px 20px rgba(20, 33, 43, 0.08);
       transition: box-shadow 0.15s ease, outline 0.15s ease;
+      z-index: 1;
+      user-select: none;
+    }
+
+    .table-card.moving {
+      z-index: 20;
+      box-shadow: 0 16px 36px rgba(20, 33, 43, 0.18);
+      opacity: 0.96;
     }
 
     .table-card.drag-over {
@@ -271,6 +305,30 @@
     .table-card.over {
       border-color: #fca5a5;
       background: #fff7f7;
+    }
+
+    .table-move-handle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.5rem;
+      background: #ecfdf5;
+      border-bottom: 1px solid var(--line);
+      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .table-move-handle:active { cursor: grabbing; }
+
+    .table-move-handle .grip {
+      letter-spacing: 0.12em;
+      opacity: 0.7;
     }
 
     .table-head {
@@ -332,18 +390,30 @@
 
     .table-foot select { flex: 1 1 120px; }
 
-    .display-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 1rem;
+    .display-floor-wrap {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(90deg, rgba(15, 118, 110, 0.05) 1px, transparent 1px),
+        linear-gradient(rgba(15, 118, 110, 0.05) 1px, transparent 1px),
+        white;
+      background-size: 24px 24px;
+      overflow: auto;
+      min-height: 520px;
     }
 
     .display-card {
+      position: absolute;
+      width: 260px;
       background: white;
       border: 1px solid var(--line);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
       overflow: hidden;
+    }
+
+    .display-card.unassigned-card {
+      width: 280px;
     }
 
     .display-card header.card-h {
@@ -443,6 +513,11 @@
         border: none;
         padding-bottom: 0;
       }
+      .display-floor-wrap {
+        overflow: visible;
+        border: none;
+        min-height: 0;
+      }
       .display-card {
         break-inside: avoid;
         box-shadow: none;
@@ -475,7 +550,7 @@
 
     <!-- ASSIGN VIEW -->
     <section id="view-assign" class="view active">
-      <p class="hint">Drag people onto tables, or use the dropdown on each table. Double-click a table name to rename.</p>
+      <p class="hint">Drag the green handle to move tables around the floor. Drag people onto tables, or use each table’s dropdown. Double-click a table name to rename.</p>
       <div class="layout">
         <aside class="stack">
           <div class="panel">
@@ -485,8 +560,9 @@
               <textarea id="bulkPeople" rows="3" placeholder="Bulk paste: one name per line"></textarea>
               <div class="row">
                 <button type="button" class="primary" id="addPeople">Add</button>
-                <button type="button" id="shuffleUnassigned">Shuffle unassigned</button>
+                <label class="file-btn">Upload CSV<input type="file" id="csvFile" accept=".csv,text/csv,text/plain" /></label>
               </div>
+              <button type="button" id="shuffleUnassigned">Shuffle unassigned</button>
             </div>
           </div>
 
@@ -501,6 +577,7 @@
                 <button type="button" class="primary" id="addTable">Add table</button>
                 <button type="button" id="autoFill">Auto-fill</button>
               </div>
+              <button type="button" id="autoArrange">Auto-arrange layout</button>
             </div>
           </div>
 
@@ -517,7 +594,9 @@
               <option value="ALL">All tables</option>
             </select>
           </div>
-          <div class="tables-grid" id="tablesGrid"></div>
+          <div class="floor-wrap" id="floorWrap">
+            <div class="floor-canvas" id="tablesGrid"></div>
+          </div>
         </section>
       </div>
     </section>
@@ -532,7 +611,9 @@
           <input type="checkbox" id="showUnassignedDisplay" checked /> Show unassigned
         </label>
       </div>
-      <div class="display-grid" id="displayGrid"></div>
+      <div class="display-floor-wrap">
+        <div class="floor-canvas" id="displayGrid"></div>
+      </div>
     </section>
   </main>
 
@@ -559,24 +640,50 @@
 
   <script>
     const STORAGE_KEY = "table-seating-v1";
+    const TABLE_W = 260;
+    const TABLE_GAP = 24;
+    const TABLE_EST_H = 220;
 
     const state = {
       people: [], // { id, name, tableId: null|string }
-      tables: [], // { id, name, capacity }
+      tables: [], // { id, name, capacity, x, y }
       editingTableId: null,
     };
 
     const uid = () => Math.random().toString(36).slice(2, 10);
 
-    function defaultState() {
+    function gridPosition(index) {
+      const cols = 3;
+      const col = index % cols;
+      const row = Math.floor(index / cols);
       return {
-        people: [],
-        tables: [
-          { id: uid(), name: "Table 1", capacity: 8 },
-          { id: uid(), name: "Table 2", capacity: 8 },
-          { id: uid(), name: "Table 3", capacity: 8 },
-        ],
+        x: 24 + col * (TABLE_W + TABLE_GAP),
+        y: 24 + row * (TABLE_EST_H + TABLE_GAP),
       };
+    }
+
+    function nextTablePos() {
+      return gridPosition(state.tables.length);
+    }
+
+    function ensureTablePositions(tables) {
+      return tables.map((t, i) => {
+        const fallback = gridPosition(i);
+        return {
+          ...t,
+          capacity: Math.max(1, Number(t.capacity) || 8),
+          x: Number.isFinite(t.x) ? t.x : fallback.x,
+          y: Number.isFinite(t.y) ? t.y : fallback.y,
+        };
+      });
+    }
+
+    function defaultState() {
+      const tables = [1, 2, 3].map((n, i) => {
+        const pos = gridPosition(i);
+        return { id: uid(), name: `Table ${n}`, capacity: 8, x: pos.x, y: pos.y };
+      });
+      return { people: [], tables };
     }
 
     function load() {
@@ -586,7 +693,7 @@
         const data = JSON.parse(raw);
         return {
           people: Array.isArray(data.people) ? data.people : [],
-          tables: Array.isArray(data.tables) ? data.tables : defaultState().tables,
+          tables: ensureTablePositions(Array.isArray(data.tables) ? data.tables : defaultState().tables),
         };
       } catch {
         return defaultState();
@@ -603,7 +710,37 @@
     function hydrate() {
       const data = load();
       state.people = data.people;
-      state.tables = data.tables;
+      state.tables = ensureTablePositions(data.tables);
+    }
+
+    function canvasSize(tables, extra = null) {
+      const items = tables.slice();
+      if (extra) items.push(extra);
+      let maxX = 900;
+      let maxY = 640;
+      for (const t of items) {
+        maxX = Math.max(maxX, (t.x || 0) + TABLE_W + 48);
+        maxY = Math.max(maxY, (t.y || 0) + TABLE_EST_H + 80);
+      }
+      return { width: maxX, height: maxY };
+    }
+
+    function sizeCanvas(el, tables, extra = null) {
+      const { width, height } = canvasSize(tables, extra);
+      el.style.width = `${width}px`;
+      el.style.height = `${height}px`;
+      el.style.minWidth = `${width}px`;
+      el.style.minHeight = `${height}px`;
+    }
+
+    function autoArrangeLayout() {
+      state.tables.forEach((t, i) => {
+        const pos = gridPosition(i);
+        t.x = pos.x;
+        t.y = pos.y;
+      });
+      save();
+      render();
     }
 
     function normalizeName(name) {
@@ -612,13 +749,14 @@
 
     function addPeopleFromText(text) {
       const lines = text
-        .split(/[\n,;]+/)
+        .split(/[\n;]+/)
         .map(normalizeName)
         .filter(Boolean);
 
       const existing = new Set(state.people.map((p) => p.name.toLowerCase()));
       let added = 0;
       for (const name of lines) {
+        if (isPlaceholderName(name)) continue;
         if (existing.has(name.toLowerCase())) continue;
         state.people.push({ id: uid(), name, tableId: null });
         existing.add(name.toLowerCase());
@@ -627,6 +765,70 @@
       save();
       render();
       return added;
+    }
+
+    function isPlaceholderName(name) {
+      return ["guest", "tba", "tbd", "+1", "plus one"].includes(name.toLowerCase());
+    }
+
+    function parseCsv(text) {
+      const rows = [];
+      let row = [];
+      let cell = "";
+      let inQuotes = false;
+      const src = text.replace(/^\uFEFF/, "");
+      for (let i = 0; i < src.length; i++) {
+        const ch = src[i];
+        const next = src[i + 1];
+        if (inQuotes) {
+          if (ch === '"' && next === '"') { cell += '"'; i += 1; }
+          else if (ch === '"') inQuotes = false;
+          else cell += ch;
+        } else if (ch === '"') inQuotes = true;
+        else if (ch === ",") { row.push(cell); cell = ""; }
+        else if (ch === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
+        else if (ch !== "\r") cell += ch;
+      }
+      if (cell.length || row.length) {
+        row.push(cell);
+        rows.push(row);
+      }
+      return rows.filter((r) => r.some((c) => String(c).trim()));
+    }
+
+    function namesFromCsvText(text) {
+      const rows = parseCsv(text);
+      if (!rows.length) return [];
+
+      const header = rows[0].map((h) => h.trim().toLowerCase());
+      const firstIdx = header.indexOf("first name");
+      const lastIdx = header.indexOf("last name");
+
+      if (firstIdx !== -1 && lastIdx !== -1) {
+        const col = (h) => header.indexOf(h);
+        const partnerFirst = col("partner first name");
+        const partnerLast = col("partner last name");
+        const names = [];
+        const push = (first, last, fallbackLast) => {
+          const f = normalizeName(first || "");
+          const l = normalizeName(last || "") || normalizeName(fallbackLast || "");
+          if (!f || isPlaceholderName(f)) return;
+          names.push([f, l].filter(Boolean).join(" "));
+        };
+        for (const r of rows.slice(1)) {
+          const familyLast = r[lastIdx] || "";
+          push(r[firstIdx], r[lastIdx]);
+          if (partnerFirst !== -1) push(r[partnerFirst], partnerLast === -1 ? "" : r[partnerLast], familyLast);
+          for (let i = 1; i <= 5; i++) {
+            const cf = col(`child ${i} first name`);
+            const cl = col(`child ${i} last name`);
+            if (cf !== -1) push(r[cf], cl === -1 ? "" : r[cl], familyLast);
+          }
+        }
+        return names;
+      }
+
+      return rows.flat().map((c) => normalizeName(c)).filter((name) => name && !["name", "names", "guest", "full name"].includes(name.toLowerCase()));
     }
 
     function peopleAt(tableId) {
@@ -692,6 +894,19 @@
 
       const tables = state.tables.filter((t) => filter === "ALL" || t.id === filter);
 
+      if (!tables.length) {
+        grid.classList.add("empty-floor");
+        grid.style.width = "";
+        grid.style.height = "";
+        grid.style.minWidth = "";
+        grid.style.minHeight = "";
+        grid.innerHTML = `<p class="meta">No tables yet. Add one on the left.</p>`;
+        return;
+      }
+
+      grid.classList.remove("empty-floor");
+      sizeCanvas(grid, tables);
+
       grid.innerHTML = tables.map((t) => {
         let seated = peopleAt(t.id);
         if (q) seated = seated.filter((p) => p.name.toLowerCase().includes(q));
@@ -703,7 +918,10 @@
         ).join("");
 
         return `
-          <article class="table-card ${cardCls}" data-table-id="${t.id}">
+          <article class="table-card ${cardCls}" data-table-id="${t.id}" style="left:${t.x}px;top:${t.y}px;width:${TABLE_W}px">
+            <div class="table-move-handle" data-move-table="${t.id}" title="Drag to move table">
+              <span class="grip">⋮⋮</span> Move table
+            </div>
             <div class="table-head">
               <div>
                 <h3 class="table-title" data-rename="${t.id}" title="Double-click to rename">${escapeHtml(t.name)}</h3>
@@ -730,7 +948,7 @@
             </div>
           </article>
         `;
-      }).join("") || `<p class="meta">No tables yet. Add one on the left.</p>`;
+      }).join("");
     }
 
     function renderDisplay() {
@@ -738,27 +956,41 @@
       const showUnassigned = document.getElementById("showUnassignedDisplay").checked;
       const grid = document.getElementById("displayGrid");
 
-      const cards = state.tables
-        .filter((t) => !hideEmpty || peopleAt(t.id).length)
-        .map((t) => {
-          const seated = peopleAt(t.id).slice().sort((a, b) => a.name.localeCompare(b.name));
-          return `
-            <article class="display-card">
-              <header class="card-h">
-                <h3>${escapeHtml(t.name)}</h3>
-                <p>${seated.length} / ${t.capacity} seats</p>
-              </header>
-              ${seated.length
-                ? `<ol>${seated.map((p) => `<li>${escapeHtml(p.name)}</li>`).join("")}</ol>`
-                : `<div class="display-empty">No one assigned</div>`}
-            </article>
-          `;
-        });
+      const tables = state.tables.filter((t) => !hideEmpty || peopleAt(t.id).length);
+
+      if (!tables.length && !showUnassigned) {
+        grid.classList.add("empty-floor");
+        grid.innerHTML = `<p class="meta">Nothing to display yet.</p>`;
+        return;
+      }
+
+      grid.classList.remove("empty-floor");
+      const extra = showUnassigned
+        ? { x: Math.max(...(tables.length ? tables.map((t) => t.x || 0) : [24]), 24) + TABLE_W + 40, y: 24 }
+        : null;
+      sizeCanvas(grid, tables, extra);
+
+      const cards = tables.map((t) => {
+        const seated = peopleAt(t.id).slice().sort((a, b) => a.name.localeCompare(b.name));
+        return `
+          <article class="display-card" style="left:${t.x}px;top:${t.y}px">
+            <header class="card-h">
+              <h3>${escapeHtml(t.name)}</h3>
+              <p>${seated.length} / ${t.capacity} seats</p>
+            </header>
+            ${seated.length
+              ? `<ol>${seated.map((p) => `<li>${escapeHtml(p.name)}</li>`).join("")}</ol>`
+              : `<div class="display-empty">No one assigned</div>`}
+          </article>
+        `;
+      });
 
       if (showUnassigned) {
         const open = unassigned().slice().sort((a, b) => a.name.localeCompare(b.name));
+        const ux = extra.x;
+        const uy = extra.y;
         cards.push(`
-          <article class="display-card">
+          <article class="display-card unassigned-card" style="left:${ux}px;top:${uy}px">
             <header class="card-h" style="background:#334155">
               <h3>Unassigned</h3>
               <p>${open.length} people</p>
@@ -770,7 +1002,7 @@
         `);
       }
 
-      grid.innerHTML = cards.join("") || `<p class="meta">Nothing to display yet.</p>`;
+      grid.innerHTML = cards.join("");
     }
 
     function escapeHtml(str) {
@@ -788,6 +1020,7 @@
       renderTables();
       renderDisplay();
       bindDrag();
+      bindTableMove();
     }
 
     function assignPerson(personId, tableId) {
@@ -825,6 +1058,7 @@
     }
 
     let dragPersonId = null;
+    let tableMove = null;
 
     function bindDrag() {
       document.querySelectorAll("[data-person-id][draggable='true']").forEach((el) => {
@@ -857,6 +1091,74 @@
       });
     }
 
+    function bindTableMove() {
+      document.querySelectorAll("[data-move-table]").forEach((handle) => {
+        handle.addEventListener("pointerdown", (e) => {
+          if (e.button != null && e.button !== 0) return;
+          const tableId = handle.dataset.moveTable;
+          const table = state.tables.find((t) => t.id === tableId);
+          const card = handle.closest(".table-card");
+          const canvas = document.getElementById("tablesGrid");
+          if (!table || !card || !canvas) return;
+
+          e.preventDefault();
+          handle.setPointerCapture(e.pointerId);
+          card.classList.add("moving");
+
+          const canvasRect = canvas.getBoundingClientRect();
+          tableMove = {
+            tableId,
+            card,
+            handle,
+            startX: e.clientX,
+            startY: e.clientY,
+            origX: table.x,
+            origY: table.y,
+            canvas,
+            canvasRect,
+          };
+        });
+
+        handle.addEventListener("pointermove", (e) => {
+          if (!tableMove || tableMove.handle !== handle) return;
+          const dx = e.clientX - tableMove.startX;
+          const dy = e.clientY - tableMove.startY;
+          const x = Math.max(0, tableMove.origX + dx);
+          const y = Math.max(0, tableMove.origY + dy);
+          tableMove.card.style.left = `${x}px`;
+          tableMove.card.style.top = `${y}px`;
+          sizeCanvas(tableMove.canvas, state.tables, { x, y });
+        });
+
+        const endMove = (e) => {
+          if (!tableMove || tableMove.handle !== handle) return;
+          const table = state.tables.find((t) => t.id === tableMove.tableId);
+          if (table) {
+            const left = parseFloat(tableMove.card.style.left);
+            const top = parseFloat(tableMove.card.style.top);
+            if (Number.isFinite(left) && Number.isFinite(top)) {
+              table.x = Math.max(0, Math.round(left));
+              table.y = Math.max(0, Math.round(top));
+            } else {
+              const dx = e.clientX - tableMove.startX;
+              const dy = e.clientY - tableMove.startY;
+              table.x = Math.max(0, Math.round(tableMove.origX + dx));
+              table.y = Math.max(0, Math.round(tableMove.origY + dy));
+            }
+          }
+          tableMove.card.classList.remove("moving");
+          try { handle.releasePointerCapture(e.pointerId); } catch {}
+          tableMove = null;
+          save();
+          renderDisplay();
+          sizeCanvas(document.getElementById("tablesGrid"), state.tables);
+        };
+
+        handle.addEventListener("pointerup", endMove);
+        handle.addEventListener("pointercancel", endMove);
+      });
+    }
+
     // Events
     document.querySelectorAll(".tab").forEach((tab) => {
       tab.addEventListener("click", () => setView(tab.dataset.view));
@@ -878,11 +1180,14 @@
     document.getElementById("addTable").addEventListener("click", () => {
       const name = normalizeName(document.getElementById("tableName").value) || `Table ${state.tables.length + 1}`;
       const capacity = Math.max(1, Number(document.getElementById("tableCap").value) || 8);
-      state.tables.push({ id: uid(), name, capacity });
+      const pos = nextTablePos();
+      state.tables.push({ id: uid(), name, capacity, x: pos.x, y: pos.y });
       document.getElementById("tableName").value = "";
       save();
       render();
     });
+
+    document.getElementById("autoArrange").addEventListener("click", autoArrangeLayout);
 
     document.getElementById("autoFill").addEventListener("click", () => {
       if (!unassigned().length) return alert("No unassigned people.");
@@ -1007,11 +1312,24 @@
         const data = JSON.parse(await file.text());
         if (!Array.isArray(data.people) || !Array.isArray(data.tables)) throw new Error("Invalid file");
         state.people = data.people;
-        state.tables = data.tables;
+        state.tables = ensureTablePositions(data.tables);
         save();
         render();
       } catch {
         alert("Could not import that file.");
+      }
+      e.target.value = "";
+    });
+
+    document.getElementById("csvFile").addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const names = namesFromCsvText(await file.text());
+        const added = addPeopleFromText(names.join("\n"));
+        if (!added) alert("No new names found in that CSV.");
+      } catch {
+        alert("Could not read that CSV.");
       }
       e.target.value = "";
     });
